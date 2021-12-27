@@ -1,0 +1,107 @@
+name: vorta
+summary: Vorta is a backup client for macOS and Linux desktops.
+description: |
+  It integrates the mighty BorgBackup with your desktop environment to protect your data from disk failure, ransomware and theft.
+icon: snap/gui/logo.svg
+adopt-info: vorta
+grade: stable
+confinement: strict
+base: core20
+compression: lzo
+architectures:
+  - build-on: [ arm64, armhf, amd64 ]
+plugs:
+  gsettings:
+  gtk-3-themes:
+    default-provider: gtk-common-themes
+    interface: content
+    target: $SNAP/data-dir/themes
+  icon-themes:
+    default-provider: gtk-common-themes
+    interface: content
+    target: $SNAP/data-dir/icons
+  sound-themes:
+    default-provider: gtk-common-themes
+    interface: content
+    target: $SNAP/data-dir/sounds
+  unity7:
+  x11:
+  opengl:
+  network:
+  network-bind:
+  network-manager:
+  removable-media:
+  wayland:
+  desktop-legacy:
+  desktop:
+  home:
+    read: all
+  system-backup:
+apps:
+  vorta:
+    adapter: full
+    command: bin/vorta
+    command-chain:
+      - bin/desktop-launch
+      - bin/vorta-snap
+    desktop: lib/python3.8/site-packages/vorta/assets/metadata/com.borgbase.Vorta.desktop
+    autostart: vorta.desktop
+    environment:
+      PYTHONPATH: $SNAP/usr/lib/python3/dist-packages
+      DISABLE_WAYLAND: 1
+      NO_AT_BRIDGE: 1
+      GTK_PATH: $SNAP/usr/lib/x86_64-linux-gnu/gtk-3.0
+parts:
+  desktop-qt5:
+    source: https://github.com/ubuntu/snapcraft-desktop-helpers.git
+    source-subdir: qt
+    plugin: make
+    make-parameters: [ "FLAVOR=qt5" ]
+    build-packages:
+      - build-essential
+      - qtbase5-dev
+      - dpkg-dev
+    stage-packages:
+      - libxkbcommon0
+      - ttf-ubuntu-font-family
+      - dmz-cursor-theme
+      - light-themes
+      - adwaita-icon-theme
+      - gnome-themes-standard
+      - libgtk2.0-0
+      - libglib2.0-0
+      - shared-mime-info
+      - libqt5gui5
+      - libgdk-pixbuf2.0-0
+      - libqt5svg5 # for loading icon themes which are svg
+      - try: [ appmenu-qt5 ] # not available on core18
+      - locales-all
+      - xdg-user-dirs
+      - fcitx-frontend-qt5
+      - libcanberra-gtk3-module
+  qt5-gtk-platform:
+    plugin: nil
+    stage-packages:
+      - qt5-gtk-platformtheme
+  vorta:
+    plugin: python
+    source: https://github.com/borgbase/vorta.git
+    build-environment:
+      - PYTHONPATH: $SNAPCRAFT_PART_INSTALL/usr/lib/python3/dist-packages:$PYTHONPATH
+    stage-packages:
+      - python3-pyqt5
+      - qtwayland5
+      - borgbackup
+      - glib-networking
+    override-pull: |
+      snapcraftctl pull
+      snapcraftctl set-version \
+      "$(git describe --long --tags --always --match=v*.*.* | sed 's/v//')"
+    override-stage: |
+      ln -s lib/python3.8/site-packages/vorta/assets/icons/icon.svg com.borgbase.Vorta
+      snapcraftctl stage
+  vorta-launcher:
+    plugin: dump
+    source: .
+    organize:
+      vorta-snap.sh: bin/vorta-snap
