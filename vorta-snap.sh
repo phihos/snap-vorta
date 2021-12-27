@@ -18,4 +18,6 @@ else
   echo "  * \"snap connect $SNAP_NAME:system-backup\" for fully system backups"
 fi
 
+mkdir -p "$XDG_CONFIG_HOME"/autostart
+
 exec "${@}"
