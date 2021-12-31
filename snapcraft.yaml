@@ -5,7 +5,7 @@ description: |
 icon: snap/gui/logo.svg
 adopt-info: vorta
 grade: stable
-confinement: strict
+confinement: classic
 base: core20
 compression: lzo
 architectures:
@@ -40,17 +40,16 @@ plugs:
 apps:
   vorta:
     adapter: full
-    command: bin/vorta
+    command: usr/bin/python3.8 $SNAP/bin/vorta
     command-chain:
       - bin/desktop-launch
-      - bin/vorta-snap
     desktop: lib/python3.8/site-packages/vorta/assets/metadata/com.borgbase.Vorta.desktop
     autostart: vorta.desktop
     environment:
-      PYTHONPATH: $SNAP/usr/lib/python3/dist-packages
-      DISABLE_WAYLAND: 1
+      PYTHONPATH: $SNAP/usr/lib/python3/dist-packages:$SNAP/lib/python3.8/site-packages
+      #LD_LIBRARY_PATH: $LD_LIBRARY_PATH:$SNAP/lib:$SNAP/usr/lib:$SNAP/lib/$ARCH:$SNAP/usr/lib/$ARCH
+      #DISABLE_WAYLAND: 1
       NO_AT_BRIDGE: 1
-      GTK_PATH: $SNAP/usr/lib/x86_64-linux-gnu/gtk-3.0
 parts:
   desktop-qt5:
     source: https://github.com/ubuntu/snapcraft-desktop-helpers.git
@@ -93,12 +92,22 @@ parts:
       - qtwayland5
       - borgbackup
       - glib-networking
+      - libpython3-stdlib
+      - libpython3.8-stdlib
+      - libpython3.8-minimal
+      - python3-setuptools
+      - python3-wheel
+      - python3-venv
+      - python3-minimal
+      - python3-distutils
+      - python3-pkg-resources
+      - python3.8-minimal
     override-pull: |
       snapcraftctl pull
       snapcraftctl set-version \
       "$(git describe --long --tags --always --match=v*.*.* | sed 's/v//')"
     override-stage: |
-      ln -s lib/python3.8/site-packages/vorta/assets/icons/icon.svg com.borgbase.Vorta
+      ln -sf lib/python3.8/site-packages/vorta/assets/icons/icon.svg com.borgbase.Vorta
       snapcraftctl stage
   vorta-launcher:
     plugin: dump
