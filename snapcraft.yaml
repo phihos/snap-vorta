@@ -42,13 +42,13 @@ apps:
     adapter: full
     command: usr/bin/python3.8 $SNAP/bin/vorta
     command-chain:
-      - bin/desktop-launch
+      #- bin/desktop-launch
+      - bin/vorta-snap
     desktop: lib/python3.8/site-packages/vorta/assets/metadata/com.borgbase.Vorta.desktop
     autostart: vorta.desktop
     environment:
       PYTHONPATH: $SNAP/usr/lib/python3/dist-packages:$SNAP/lib/python3.8/site-packages
-      #LD_LIBRARY_PATH: $LD_LIBRARY_PATH:$SNAP/lib:$SNAP/usr/lib:$SNAP/lib/$ARCH:$SNAP/usr/lib/$ARCH
-      #DISABLE_WAYLAND: 1
+      DISABLE_WAYLAND: 1
       NO_AT_BRIDGE: 1
 parts:
   desktop-qt5:
@@ -61,28 +61,112 @@ parts:
       - qtbase5-dev
       - dpkg-dev
     stage-packages:
-      - libxkbcommon0
       - ttf-ubuntu-font-family
       - dmz-cursor-theme
       - light-themes
       - adwaita-icon-theme
       - gnome-themes-standard
-      - libgtk2.0-0
-      - libglib2.0-0
       - shared-mime-info
       - libqt5gui5
-      - libgdk-pixbuf2.0-0
       - libqt5svg5 # for loading icon themes which are svg
       - try: [ appmenu-qt5 ] # not available on core18
       - locales-all
       - xdg-user-dirs
       - fcitx-frontend-qt5
-      - libcanberra-gtk3-module
+    stage:
+      - -usr/lib/x86_64-linux-gnu/libicudata.so.66.1
+      - -usr/lib/x86_64-linux-gnu/libX11-xcb.so.1.0.0
   qt5-gtk-platform:
     plugin: nil
     stage-packages:
       - qt5-gtk-platformtheme
+
+  glib:
+    plugin: meson
+    source: https://gitlab.gnome.org/GNOME/glib.git
+    source-type: git
+    source-tag: 2.70.0 # needs to be >= 2.66
+    meson-parameters:
+      - -Dtests=false
+      - --wrap-mode=nodownload
+
+  pango:
+    after: [glib]
+    plugin: meson
+    source: https://gitlab.gnome.org/GNOME/pango.git
+    source-type: git
+    source-tag: 1.48.7 # needs to be >= 1.47.0
+    meson-parameters:
+      - --wrap-mode=nodownload
+
+  wayland-protocols:
+    plugin: meson
+    source: https://gitlab.freedesktop.org/wayland/wayland-protocols.git
+    source-type: git
+    source-tag: '1.23' # needs to be >= 1.21
+    meson-parameters:
+      - -Dtests=false
+      - --wrap-mode=nodownload
+  gtk:
+    after: [glib, pango, wayland-protocols]
+    plugin: meson
+    source: https://gitlab.gnome.org/GNOME/gtk.git
+    source-type: git
+    source-tag: 4.4.1
+    meson-parameters:
+      - -Dbuild-examples=false
+      - -Dbuild-tests=false
+      - -Ddemos=false
+      - -Dmedia-gstreamer=disabled
+      - --wrap-mode=nodownload
+    build-packages:
+      - libepoxy-dev
+      - libgdk-pixbuf2.0-dev
+      - libgraphene-1.0-dev
+      - libpango1.0-dev
+      - libwayland-dev
+      - libxcursor-dev
+      - libxdamage-dev
+      - libxi-dev
+      - libxinerama-dev
+      - libxkbcommon-dev
+      - libxrandr-dev
+      - sassc
+    stage-packages:
+      - libcairo-gobject2
+      - libcairo-script-interpreter2
+      - libcairo2
+      - libdatrie1
+      - libepoxy0
+      - libfontconfig1
+      - libfreetype6
+      - libfribidi0
+      - libgdk-pixbuf2.0-0
+      - libgraphene-1.0-0
+      - libgraphite2-3
+      - libharfbuzz0b
+      - libpixman-1-0
+      - libpng16-16
+      - libthai0
+      - libwayland-client0
+      - libwayland-egl1
+      - libx11-6
+      - libxau6
+      - libxcb-render0
+      - libxcb-shm0
+      - libxcb1
+      - libxcursor1
+      - libxdamage1
+      - libxdmcp6
+      - libxext6
+      - libxfixes3
+      - libxi6
+      - libxinerama1
+      - libxkbcommon0
+      - libxrandr2
+      - libxrender1
   vorta:
+    after: [ gtk ]
     plugin: python
     source: https://github.com/borgbase/vorta.git
     build-environment:
@@ -91,17 +175,21 @@ parts:
       - python3-pyqt5
       - qtwayland5
       - borgbackup
-      - glib-networking
-      - libpython3-stdlib
-      - libpython3.8-stdlib
       - libpython3.8-minimal
-      - python3-setuptools
-      - python3-wheel
-      - python3-venv
+      - libpython3.8-stdlib
       - python3-minimal
-      - python3-distutils
-      - python3-pkg-resources
       - python3.8-minimal
+      - python3.8-venv
+      - python3-distutils
+      - python3-cffi
+      - libegl-mesa0
+      - libgl1-mesa-dri
+      - locales-all
+      - libpcre2-dev
+      - gvfs
+    stage:
+      - -usr/lib/x86_64-linux-gnu/libicudata.so.66.1
+      - -usr/lib/x86_64-linux-gnu/libX11-xcb.so.1.0.0
     override-pull: |
       snapcraftctl pull
       snapcraftctl set-version \
@@ -109,6 +197,36 @@ parts:
     override-stage: |
       ln -sf lib/python3.8/site-packages/vorta/assets/icons/icon.svg com.borgbase.Vorta
       snapcraftctl stage
+  finalize:
+    plugin: nil
+    after: [ vorta ]
+    build-packages:
+      - patchelf
+    override-prime: |
+      snapcraftctl prime
+      # snapcraft will set RPATH for us. But it may get some things wrong.
+      # (A) its order seems undefined
+      # (B) for deja-dup-monitor at least, it only adds an core path, not knowing
+      #     that actually, we'd prefer our own glib
+      # So what we want to do is to set specific rpaths for all libraries and
+      # executables.
+      export PATCHELF="patchelf --force-rpath --set-rpath /snap/vorta/current/usr/local/lib/$SNAPCRAFT_ARCH_TRIPLET:/snap/vorta/current/usr/lib/$SNAPCRAFT_ARCH_TRIPLET:/snap/vorta/current/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/gvfs:/snap/core20/current/usr/lib/$SNAPCRAFT_ARCH_TRIPLET"
+      #find lib usr -name '*.so*' -exec $PATCHELF {} \;
+      #find bin usr/bin usr/libexec -exec $PATCHELF {} \;
+      # Remove libraries from archive that we have built updated copies of
+      #cd usr/lib/$SNAPCRAFT_ARCH_TRIPLET; ls ../../local/lib/$SNAPCRAFT_ARCH_TRIPLET -p | grep -v / | xargs rm -f; cd -
+      # Fix shebangs to not reference /usr/bin/env
+      grep -rl '#!/usr/bin/env python3' | xargs sed -i 's|#!/usr/bin/env python3|#!/snap/vorta/current/usr/bin/python3|' || true
+      # Compile pixbuf loaders cache
+      export GDK_PIXBUF_MODULEDIR=`pwd`/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/gdk-pixbuf-2.0/2.10.0/loaders
+      export GDK_PIXBUF_MODULE_FILE=${GDK_PIXBUF_MODULEDIR}.cache
+      usr/lib/$SNAPCRAFT_ARCH_TRIPLET/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders --update-cache
+      sed -i "s|`pwd`|/snap/vorta/current|g" $GDK_PIXBUF_MODULE_FILE
+      # Compile giomodules cache
+      gio-querymodules usr/lib/$SNAPCRAFT_ARCH_TRIPLET/gio/modules
+      mkdir -p usr/share/glib-2.0/schemas
+      cp usr/local/share/glib-2.0/schemas/*.xml usr/share/glib-2.0/schemas
+      glib-compile-schemas usr/share/glib-2.0/schemas
   vorta-launcher:
     plugin: dump
     source: .
